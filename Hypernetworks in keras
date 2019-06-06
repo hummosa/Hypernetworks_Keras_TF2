@@ -1,0 +1,562 @@
+{
+  "nbformat": 4,
+  "nbformat_minor": 0,
+  "metadata": {
+    "colab": {
+      "name": "Restarting_from_hypernetwork_test.ipynb",
+      "version": "0.3.2",
+      "provenance": [],
+      "collapsed_sections": [],
+      "include_colab_link": true
+    },
+    "kernelspec": {
+      "name": "python3",
+      "display_name": "Python 3"
+    }
+  },
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "view-in-github",
+        "colab_type": "text"
+      },
+      "source": [
+        "<a href=\"https://colab.research.google.com/github/hummosa/hypernetworks-keras-tf2/blob/master/Hypernetworks%20in%20keras\" target=\"_parent\"><img src=\"https://colab.research.google.com/assets/colab-badge.svg\" alt=\"Open In Colab\"/></a>"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "bA6CfJ159Qke",
+        "colab_type": "text"
+      },
+      "source": [
+        "#Guide to Hypernetworks in Keras and Tensorflow 2.0"
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "EFscRdMm4-R_",
+        "colab_type": "text"
+      },
+      "source": [
+        "This guide discusses a basic implementation of hypernetworks in keras. Hypernetworks are typically a pair of networks where one generates the parameters (weights) of the other. Keras layer implementation exposes the parameters of a layer as the ‘kernel’ and the ‘bias’ as modifiable properties of the layer. This code will separate the hypernetwork into two models. One inference model will produce a softmax output to classify inputs, and a hyper model, which will generate the parameters of the inference model for each input image. \n",
+        "\n"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "xHUHlg3PpsFq",
+        "colab_type": "code",
+        "outputId": "bdc114bd-1ea9-42f6-e16a-a99b53dfb546",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 404
+        }
+      },
+      "source": [
+        "!pip install tf-nightly-gpu-2.0-preview"
+      ],
+      "execution_count": 30,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "Requirement already satisfied: tf-nightly-gpu-2.0-preview in /usr/local/lib/python3.6/dist-packages (2.0.0.dev20190606)\n",
+            "Requirement already satisfied: grpcio>=1.8.6 in /usr/local/lib/python3.6/dist-packages (from tf-nightly-gpu-2.0-preview) (1.15.0)\n",
+            "Requirement already satisfied: protobuf>=3.6.1 in /usr/local/lib/python3.6/dist-packages (from tf-nightly-gpu-2.0-preview) (3.7.1)\n",
+            "Requirement already satisfied: keras-preprocessing>=1.0.5 in /usr/local/lib/python3.6/dist-packages (from tf-nightly-gpu-2.0-preview) (1.0.9)\n",
+            "Requirement already satisfied: absl-py>=0.7.0 in /usr/local/lib/python3.6/dist-packages (from tf-nightly-gpu-2.0-preview) (0.7.1)\n",
+            "Requirement already satisfied: numpy<2.0,>=1.14.5 in /usr/local/lib/python3.6/dist-packages (from tf-nightly-gpu-2.0-preview) (1.16.4)\n",
+            "Requirement already satisfied: google-pasta>=0.1.6 in /usr/local/lib/python3.6/dist-packages (from tf-nightly-gpu-2.0-preview) (0.1.7)\n",
+            "Requirement already satisfied: termcolor>=1.1.0 in /usr/local/lib/python3.6/dist-packages (from tf-nightly-gpu-2.0-preview) (1.1.0)\n",
+            "Requirement already satisfied: wheel>=0.26 in /usr/local/lib/python3.6/dist-packages (from tf-nightly-gpu-2.0-preview) (0.33.4)\n",
+            "Requirement already satisfied: tb-nightly<1.15.0a0,>=1.14.0a0 in /usr/local/lib/python3.6/dist-packages (from tf-nightly-gpu-2.0-preview) (1.14.0a20190606)\n",
+            "Requirement already satisfied: astor>=0.6.0 in /usr/local/lib/python3.6/dist-packages (from tf-nightly-gpu-2.0-preview) (0.8.0)\n",
+            "Requirement already satisfied: tensorflow-estimator-2.0-preview in /usr/local/lib/python3.6/dist-packages (from tf-nightly-gpu-2.0-preview) (1.14.0.dev2019060600)\n",
+            "Requirement already satisfied: keras-applications>=1.0.6 in /usr/local/lib/python3.6/dist-packages (from tf-nightly-gpu-2.0-preview) (1.0.7)\n",
+            "Requirement already satisfied: wrapt>=1.11.1 in /usr/local/lib/python3.6/dist-packages (from tf-nightly-gpu-2.0-preview) (1.11.1)\n",
+            "Requirement already satisfied: six>=1.10.0 in /usr/local/lib/python3.6/dist-packages (from tf-nightly-gpu-2.0-preview) (1.12.0)\n",
+            "Requirement already satisfied: gast>=0.2.0 in /usr/local/lib/python3.6/dist-packages (from tf-nightly-gpu-2.0-preview) (0.2.2)\n",
+            "Requirement already satisfied: setuptools in /usr/local/lib/python3.6/dist-packages (from protobuf>=3.6.1->tf-nightly-gpu-2.0-preview) (41.0.1)\n",
+            "Requirement already satisfied: werkzeug>=0.11.15 in /usr/local/lib/python3.6/dist-packages (from tb-nightly<1.15.0a0,>=1.14.0a0->tf-nightly-gpu-2.0-preview) (0.15.4)\n",
+            "Requirement already satisfied: markdown>=2.6.8 in /usr/local/lib/python3.6/dist-packages (from tb-nightly<1.15.0a0,>=1.14.0a0->tf-nightly-gpu-2.0-preview) (3.1.1)\n",
+            "Requirement already satisfied: h5py in /usr/local/lib/python3.6/dist-packages (from keras-applications>=1.0.6->tf-nightly-gpu-2.0-preview) (2.8.0)\n"
+          ],
+          "name": "stdout"
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "wnNVpdnU94fi",
+        "colab_type": "code",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 35
+        },
+        "outputId": "fcae36c6-e015-4f41-b6d2-2e75fab234db"
+      },
+      "source": [
+        "# Import tensorflow and check version\n",
+        "import tensorflow as tf\n",
+        "import numpy as np\n",
+        "import matplotlib.pyplot as plt\n",
+        "\n",
+        "print('tensorflow version: {}'.format(tf.__version__))\n",
+        "tf.keras.backend.clear_session()"
+      ],
+      "execution_count": 42,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "tensorflow version: 2.0.0-dev20190606\n"
+          ],
+          "name": "stdout"
+        }
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "kAd3QYjg-AjH",
+        "colab_type": "text"
+      },
+      "source": [
+        "We first load the MNIST dataset"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "JVQYaADmbd7Y",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "(x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()\n",
+        "\n",
+        "# convert to float32 and normalize. \n",
+        "x_train = x_train.astype('float32') /255\n",
+        "x_test = x_test.astype('float32')   /255\n",
+        "\n",
+        "# one-hot encode the labels \n",
+        "y_train = tf.keras.utils.to_categorical(y_train, 10)\n",
+        "y_test = tf.keras.utils.to_categorical(y_test, 10)\n",
+        "# add a channel dimension to the images\n",
+        "x_train = x_train.reshape(x_train.shape[0], 28, 28,1)\n",
+        "x_test = x_test.reshape(x_test.shape[0], 28, 28,1)\n",
+        "\n",
+        "\n",
+        "# Define image dimensions\n",
+        "img_h = 28\n",
+        "img_w = 28\n",
+        "img_c = 1"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "WIPU7Szr-tU_",
+        "colab_type": "text"
+      },
+      "source": [
+        "We now build the inference model, a simple convolutional network, with a fully connected layer on top, that we will use to classify MNIST digits. \n"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "GkMNzey0-uQb",
+        "colab_type": "code",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 752
+        },
+        "outputId": "b3536ce1-f4fe-4bde-deda-2ee1127551a3"
+      },
+      "source": [
+        "infer_model = tf.keras.models.Sequential(name='infer_model')\n",
+        "infer_model.add(tf.keras.layers.Input(shape=(img_h, img_w, img_c), name='input_x' ))\n",
+        "infer_model.add(tf.keras.layers.Conv2D(32, (3,3), activation='relu') )\n",
+        "infer_model.add(tf.keras.layers.MaxPool2D() )\n",
+        "infer_model.add(tf.keras.layers.Conv2D(32, (3,3), activation='relu') )\n",
+        "infer_model.add(tf.keras.layers.MaxPool2D() ) \n",
+        "infer_model.add(tf.keras.layers.Flatten() )\n",
+        "\n",
+        "infer_model.add(tf.keras.layers.Dense(10, activation= 'softmax', name='out_layer') )\n",
+        "\n",
+        "infer_model.summary()"
+      ],
+      "execution_count": 33,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "Model: \"infer_model\"\n",
+            "_________________________________________________________________\n",
+            "Layer (type)                 Output Shape              Param #   \n",
+            "=================================================================\n",
+            "conv2d (Conv2D)              (None, 26, 26, 32)        320       \n",
+            "_________________________________________________________________\n",
+            "max_pooling2d (MaxPooling2D) (None, 13, 13, 32)        0         \n",
+            "_________________________________________________________________\n",
+            "conv2d_1 (Conv2D)            (None, 11, 11, 32)        9248      \n",
+            "_________________________________________________________________\n",
+            "max_pooling2d_1 (MaxPooling2 (None, 5, 5, 32)          0         \n",
+            "_________________________________________________________________\n",
+            "flatten (Flatten)            (None, 800)               0         \n",
+            "_________________________________________________________________\n",
+            "out_layer (Dense)            (None, 10)                8010      \n",
+            "=================================================================\n",
+            "Total params: 17,578\n",
+            "Trainable params: 17,578\n",
+            "Non-trainable params: 0\n",
+            "_________________________________________________________________\n",
+            "Model: \"infer_model\"\n",
+            "_________________________________________________________________\n",
+            "Layer (type)                 Output Shape              Param #   \n",
+            "=================================================================\n",
+            "conv2d (Conv2D)              (None, 26, 26, 32)        320       \n",
+            "_________________________________________________________________\n",
+            "max_pooling2d (MaxPooling2D) (None, 13, 13, 32)        0         \n",
+            "_________________________________________________________________\n",
+            "conv2d_1 (Conv2D)            (None, 11, 11, 32)        9248      \n",
+            "_________________________________________________________________\n",
+            "max_pooling2d_1 (MaxPooling2 (None, 5, 5, 32)          0         \n",
+            "_________________________________________________________________\n",
+            "flatten (Flatten)            (None, 800)               0         \n",
+            "_________________________________________________________________\n",
+            "out_layer (Dense)            (None, 10)                8010      \n",
+            "=================================================================\n",
+            "Total params: 17,578\n",
+            "Trainable params: 17,578\n",
+            "Non-trainable params: 0\n",
+            "_________________________________________________________________\n"
+          ],
+          "name": "stdout"
+        }
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "2irt-_gV-r0z",
+        "colab_type": "text"
+      },
+      "source": [
+        "Note that this model has a total of 17,578 parameters that need to be generated by the hyper model.  "
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "9uFLUlgxEFbq",
+        "colab_type": "text"
+      },
+      "source": [
+        "Let us now define the hyper model with 2 convolutional layers and a fully connected layer on top to produce a latent embedding of size 28*28. The embedding is then fed into a stack of 3 transpose convolutional layers that produce a large number of parameters.\n",
+        "\n",
+        "Note that the last layer uses a tanh activation function which produces values between -1 and 1. This allows generation of parameters with negative values. "
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "Obmi-YOfEUhE",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "hyper_model_x = tf.keras.Sequential(\n",
+        "    [\n",
+        "        tf.keras.layers.InputLayer(input_shape=(img_h, img_w, img_c)),\n",
+        "        tf.keras.layers.Conv2D(16, (3,3), activation='relu') ,\n",
+        "        tf.keras.layers.MaxPool2D() ,\n",
+        "        tf.keras.layers.Conv2D(8, (3,3), activation='relu') ,\n",
+        "        tf.keras.layers.MaxPool2D() ,\n",
+        "        tf.keras.layers.Flatten() ,\n",
+        "        tf.keras.layers.BatchNormalization(),\n",
+        "        tf.keras.layers.Dense(units=28*28*1, activation=tf.nn.relu),\n",
+        "        tf.keras.layers.Reshape(target_shape=(28, 28, 1)),\n",
+        "        tf.keras.layers.Conv2DTranspose(\n",
+        "            filters=32, #64\n",
+        "            kernel_size=3,\n",
+        "            strides=(2, 2),\n",
+        "            padding=\"same\",\n",
+        "            activation=tf.nn.relu),\n",
+        "        tf.keras.layers.Conv2DTranspose(\n",
+        "            filters=4,  #32\n",
+        "            kernel_size=3,\n",
+        "            strides=(2, 2),\n",
+        "            padding=\"same\",\n",
+        "            activation=tf.nn.relu),\n",
+        "        tf.keras.layers.Conv2DTranspose(\n",
+        "            filters=2, kernel_size=3, strides=(1, 1), padding=\"SAME\", activation='tanh'),\n",
+        "        tf.keras.layers.Flatten()\n",
+        "    ], name='hyper_model'\n",
+        ")\n"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "xVoEllG5FSzY",
+        "colab_type": "text"
+      },
+      "source": [
+        "We now define the function parametrize_model, which takes a model and a tensor of generated parameters. It consumes the parameters tensor to parametrize the weights and the biases of each model layer. "
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "oA4OJzYqJR-Y",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "def parameterize(model, weights):\n",
+        "    # function to parametrizes all the trainable variables of model using the stream of weight values in weights\n",
+        "    # This assumes weights are passed a single batch.\n",
+        "    weights = tf.reshape( weights, [-1] )\n",
+        "    \n",
+        "    last_used = 0\n",
+        "    for i in range(len(model.layers)):\n",
+        "        if 'conv' in model.layers[i].name or 'out' in model.layers[i].name or 'dense' in model.layers[i].name:\n",
+        "            weights_shape = model.layers[i].kernel.shape\n",
+        "            no_of_weights = tf.reduce_prod(weights_shape)\n",
+        "            new_weights = tf.reshape(weights[:no_of_weights], weights_shape) \n",
+        "            model.layers[i].kernel = new_weights\n",
+        "            last_used += no_of_weights\n",
+        "            \n",
+        "            if model.layers[i].use_bias:\n",
+        "              weights_shape = model.layers[i].bias.shape\n",
+        "              no_of_weights = tf.reduce_prod(weights_shape)\n",
+        "              new_weights = tf.reshape(weights[last_used:last_used+no_of_weights], weights_shape) \n",
+        "              model.layers[i].bias = new_weights\n",
+        "  #             model.layers[i].bias.assign( new_weights)\n",
+        "              last_used += no_of_weights\n"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "qvPhibvTW7Sq",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "def stats(var):\n",
+        "  # Simple function to keep track of the statistics of the generated weights\n",
+        "  if type(var) == type([]):\n",
+        "    var = np.array(var)\n",
+        "  elif type(var) == type(np.array([])):\n",
+        "    pass\n",
+        "  else: #assume tf.var\n",
+        "    var = var.numpy()\n",
+        "  print('Mean, {:2.3f}, var {:2.3f}, min {:2.3f}, max {:2.3f}'.format(var.mean(), var.var(), var.min(), var.max()))"
+      ],
+      "execution_count": 0,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "r7n5JgFfIInp",
+        "colab_type": "text"
+      },
+      "source": [
+        "We are now ready to define the main training loop. Eager execution is enabled by default in tensorflow 2.0, which provides more control over the training process. Note that the loss function is differentiated with respect to the hyper model parameters only. In fact, the parameters of the inference model are no longer considered trainable by keras (can check by running infer_model.summary()). This loop only updates the parameters of the hyper model."
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "PLgoCcsLqNQ1",
+        "colab_type": "code",
+        "outputId": "cb44df7e-7952-477d-ceba-54cd55c2174a",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 458
+        }
+      },
+      "source": [
+        "# Defnie accuracy metrics for training and validation\n",
+        "train_acc_metric = tf.keras.metrics.CategoricalAccuracy() \n",
+        "val_acc_metric = tf.keras.metrics.CategoricalAccuracy()\n",
+        "\n",
+        "# Build the two models and defnie their input shapes.\n",
+        "hyper_model_x.build((None, img_h, img_w, img_c))\n",
+        "infer_model.build((None, img_h, img_w, img_c))\n",
+        "\n",
+        "# loss_fn = tf.keras.losses.MeanSquaredError()\n",
+        "loss_fn = tf.keras.losses.CategoricalCrossentropy()\n",
+        "optimizer = tf.keras.optimizers.Adam(1e-3) # learning_rate=1e-2\n",
+        "\n",
+        "loss_accum = 0.0\n",
+        "batch_size = 1\n",
+        "for step in range(4000):\n",
+        "  idx = np.random.randint(low=0, high=x_train.shape[0], size=batch_size)\n",
+        "  x_batch, y_batch = x_train[idx], y_train[idx]\n",
+        "  x = x_batch\n",
+        "  z = np.random.random((1, latent_dim)).astype('float32')*5.0\n",
+        "\n",
+        "  y = y_batch\n",
+        "  with tf.GradientTape() as tape:\n",
+        "    # Predict weights for the infer model\n",
+        "    generated_parameters = hyper_model_x(x) * 10.0 \n",
+        "    parameterize(infer_model, generated_parameters)    \n",
+        "    \n",
+        "    # Inference on the infer model\n",
+        "    preds = infer_model(x)\n",
+        "\n",
+        "    loss = loss_fn( y, preds)\n",
+        "    loss_accum += loss\n",
+        "    train_acc_metric( y_batch, tf.expand_dims(preds, 0)) # update the acc metric\n",
+        "\n",
+        "    if step % 1000 == 0: \n",
+        "      print('Train set accuracy: {:2.2f}     loss: {:2.2f}'.format(float(train_acc_metric.result()), loss_accum))\n",
+        "      train_acc_metric.reset_states()\n",
+        "      loss_accum = 0.0\n",
+        "      print('statistics of the generated parameters:')\n",
+        "      stats(generated_parameters)\n",
+        "      \n",
+        "    # Train only hyper model\n",
+        "    grads = tape.gradient(loss, hyper_model_x.trainable_weights)\n",
+        "    optimizer.apply_gradients(zip(grads, hyper_model_x.trainable_weights))\n",
+        "\n",
+        "  "
+      ],
+      "execution_count": 37,
+      "outputs": [
+        {
+          "output_type": "stream",
+          "text": [
+            "train acc: 1.00\n",
+            "Mean, 0.004, var 0.001, min -0.117, max 0.181\n",
+            "train acc: 0.26\n",
+            "Mean, -0.079, var 0.029, min -2.791, max 2.754\n",
+            "train acc: 0.83\n",
+            "Mean, -0.109, var 0.015, min -1.567, max 1.387\n",
+            "train acc: 0.89\n",
+            "Mean, -0.132, var 0.064, min -3.026, max 3.224\n",
+            "Mean, -0.159, var 0.033, min -2.437, max 2.285\n",
+            "tf.Tensor(\n",
+            "[[1.0281663e-02 8.3111990e-03 1.7928622e-03 5.6196260e-04 8.4548771e-01\n",
+            "  1.1746390e-03 1.7971782e-02 2.0743277e-02 1.8550683e-03 9.1819853e-02]], shape=(1, 10), dtype=float32)\n",
+            "[[0. 0. 0. 0. 1. 0. 0. 0. 0. 0.]]\n",
+            "train acc: 0.00\n",
+            "Mean, 0.016, var 0.001, min -0.137, max 0.345\n",
+            "train acc: 0.09\n",
+            "Mean, -0.057, var 0.000, min -0.083, max -0.033\n",
+            "train acc: 0.11\n",
+            "Mean, -0.085, var 0.002, min -0.137, max -0.032\n",
+            "train acc: 0.10\n",
+            "Mean, 0.075, var 0.027, min -0.582, max 0.963\n",
+            "Mean, 0.076, var 0.028, min -0.668, max 1.122\n",
+            "tf.Tensor([[1. 0. 0. 0. 0. 0. 0. 0. 0. 0.]], shape=(1, 10), dtype=float32)\n",
+            "[[0. 0. 0. 0. 0. 1. 0. 0. 0. 0.]]\n"
+          ],
+          "name": "stdout"
+        }
+      ]
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "ha6mGmQKivqO",
+        "colab_type": "text"
+      },
+      "source": [
+        "Finally let's look at a histogram of the generated parameters. There is a sharp peak around very small negative values  around -0.1.\n"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "G6p9Wf3TKeOh",
+        "colab_type": "code",
+        "outputId": "eed2bfe7-56c3-4db8-a770-050c3e8ec47d",
+        "colab": {
+          "base_uri": "https://localhost:8080/",
+          "height": 655
+        }
+      },
+      "source": [
+        "plt.hist(generated_parameters, bins=50)"
+      ],
+      "execution_count": 41,
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": [
+              "(array([2.000e+00, 3.000e+00, 3.000e+00, 2.000e+00, 1.200e+01, 9.000e+00,\n",
+              "        9.000e+00, 1.700e+01, 1.300e+01, 3.900e+01, 3.700e+01, 6.400e+01,\n",
+              "        1.060e+02, 2.160e+02, 7.340e+02, 2.902e+03, 3.527e+03, 2.414e+03,\n",
+              "        1.450e+03, 5.680e+02, 4.310e+02, 4.890e+02, 8.270e+02, 2.051e+03,\n",
+              "        4.530e+03, 2.730e+03, 7.640e+02, 3.450e+02, 2.340e+02, 1.510e+02,\n",
+              "        9.600e+01, 6.900e+01, 5.100e+01, 3.600e+01, 2.000e+01, 2.000e+01,\n",
+              "        1.700e+01, 1.700e+01, 1.200e+01, 1.700e+01, 1.100e+01, 9.000e+00,\n",
+              "        1.200e+01, 5.000e+00, 4.000e+00, 3.000e+00, 4.000e+00, 2.000e+00,\n",
+              "        3.000e+00, 1.000e+00]),\n",
+              " array([-0.66822416, -0.6324277 , -0.5966312 , -0.56083477, -0.5250383 ,\n",
+              "        -0.48924187, -0.4534454 , -0.41764894, -0.3818525 , -0.34605604,\n",
+              "        -0.31025958, -0.27446312, -0.23866667, -0.2028702 , -0.16707376,\n",
+              "        -0.1312773 , -0.09548084, -0.05968438, -0.02388792,  0.01190854,\n",
+              "         0.04770499,  0.08350145,  0.11929791,  0.15509437,  0.19089082,\n",
+              "         0.22668728,  0.26248375,  0.2982802 ,  0.33407664,  0.3698731 ,\n",
+              "         0.40566957,  0.44146603,  0.4772625 ,  0.51305896,  0.5488554 ,\n",
+              "         0.5846518 ,  0.6204483 ,  0.65624475,  0.6920412 ,  0.7278377 ,\n",
+              "         0.76363415,  0.7994306 ,  0.8352271 ,  0.87102354,  0.90682   ,\n",
+              "         0.94261646,  0.97841287,  1.0142094 ,  1.0500058 ,  1.0858023 ,\n",
+              "         1.1215987 ], dtype=float32),\n",
+              " <a list of 50 Patch objects>)"
+            ]
+          },
+          "metadata": {
+            "tags": []
+          },
+          "execution_count": 41
+        },
+        {
+          "output_type": "display_data",
+          "data": {
+            "image/png": "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\n",
+            "text/plain": [
+              "<Figure size 432x288 with 1 Axes>"
+            ]
+          },
+          "metadata": {
+            "tags": []
+          }
+        }
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "kFiPFx9OjiWh",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        ""
+      ],
+      "execution_count": 0,
+      "outputs": []
+    }
+  ]
+}
